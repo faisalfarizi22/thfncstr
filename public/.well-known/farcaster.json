@@ -10,7 +10,7 @@
     "splashBackgroundColor": "#6a0ad1",
     "webhookUrl": "https://thfncstr.vercel.app/api/webhook",
     "subtitle": "A Tribute to Warplets Holders",
-    "description": "The Funcaster is a $10,000$ supply NFT for Warplets holders on Base. It uniquely ties your Warplets FID to deterministically generated art, linking your on-chain identity to your NFT.",
+    "description": "The Funcaster is a 10,000 supply NFT for Warplets holders on Base. It uniquely ties your Warplets FID to deterministically generated art, linking your on-chain identity to your NFT.",
     "primaryCategory": "art-creativity",
     "tags": [
       "nft",
