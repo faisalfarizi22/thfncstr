@@ -33,6 +33,25 @@ interface MintingCardProps {
   address: string
 }
 
+const TOTAL_IMAGES = 100
+const LOOP_INTERVAL_MS = 150
+
+const generateLoopOrder = () => {
+    const order: number[] = []
+    for (let j = 0; j < 10; j++) {
+      for (let i = 0; i < 10; i++) {
+        const index = (i * 10) + j + 1
+        if (index <= TOTAL_IMAGES) {
+          order.push(index)
+        }
+      }
+    }
+    return order
+}
+
+const loopOrder = generateLoopOrder()
+
+
 export default function MintingCard({ address }: MintingCardProps) {
   const { toast } = useToast()
   const { sendTransaction } = useSendTransaction()
@@ -49,11 +68,12 @@ export default function MintingCard({ address }: MintingCardProps) {
   const [resolveError, setResolveError] = useState<string | null>(null)
   const [alreadyOwnsNFT, setAlreadyOwnsNFT] = useState(false)
   const [existingTokenId, setExistingTokenId] = useState<string | null>(null)
+  const [currentImageIndex, setCurrentImageIndex] = useState(0)
 
   const validAddress = address && isAddress(address) ? (address as `0x${string}`) : undefined
+  
   const ipfsToGateway = (u?: string | null) => {
     if (!u) return null
-    // Use Pinata gateway for consistency
     if (u.startsWith("ipfs://")) {
       const hash = u.replace("ipfs://", "")
       return `https://chocolate-brilliant-galliform-191.mypinata.cloud/ipfs/${hash}`
@@ -62,7 +82,6 @@ export default function MintingCard({ address }: MintingCardProps) {
   }
 
   const resolveImageForToken = async (tokenId: string) => {
-    // Try metadata JSON first
     const candidates = [
       `${METADATA_BASE}${tokenId}.json`,
       `${METADATA_BASE}${tokenId}`,
@@ -74,11 +93,9 @@ export default function MintingCard({ address }: MintingCardProps) {
         const json = await res.json()
         if (json?.image) return ipfsToGateway(json.image) || json.image
       } catch (e) {
-        // ignore
       }
     }
 
-    // Fallback: try images base with common extensions (HEAD requests)
     const exts = [".png", ".jpg", ".jpeg", ".webp", ""]
     for (const ext of exts) {
       const candidate = `${IMAGES_BASE}${tokenId}${ext}`
@@ -86,12 +103,21 @@ export default function MintingCard({ address }: MintingCardProps) {
         const r = await fetch(candidate, { method: "HEAD" })
         if (r.ok) return candidate
       } catch {
-        // ignore
       }
     }
 
     return null
   }
+
+  useEffect(() => {
+    if (mintingComplete || eligibilityLoading) return
+
+    const interval = setInterval(() => {
+        setCurrentImageIndex(prevIndex => (prevIndex + 1) % loopOrder.length)
+    }, LOOP_INTERVAL_MS)
+
+    return () => clearInterval(interval)
+  }, [mintingComplete, eligibilityLoading])
 
   useEffect(() => {
     const checkEligibility = async () => {
@@ -103,7 +129,6 @@ export default function MintingCard({ address }: MintingCardProps) {
       try {
         setEligibilityLoading(true)
 
-        // Check if user already owns a Funcaster NFT
         const funcasterBalance = await publicClient.readContract({
           address: FUNCASTER_ADDRESS,
           abi: NFT_ABI,
@@ -114,7 +139,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         const ownsNFT = funcasterBalance && typeof funcasterBalance === "bigint" ? funcasterBalance > BigInt(0) : false
 
         if (ownsNFT) {
-          // User already owns a Funcaster NFT - fetch their token ID
           try {
             const tokenId = (await publicClient.readContract({
               address: FUNCASTER_ADDRESS,
@@ -129,7 +153,6 @@ export default function MintingCard({ address }: MintingCardProps) {
             setAlreadyOwnsNFT(true)
             setMintingComplete(true)
 
-            // Resolve image for existing NFT
             setIsResolving(true)
             const imageUrl = await resolveImageForToken(tokenIdStr)
             if (imageUrl) {
@@ -149,7 +172,6 @@ export default function MintingCard({ address }: MintingCardProps) {
           return
         }
 
-        // Check Warplets eligibility if user doesn't own a Funcaster yet
         const balance = await publicClient.readContract({
           address: WARPLETS_ADDRESS,
           abi: NFT_ABI,
@@ -210,7 +232,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         description: "Fetching your Warplets FID...",
       })
 
-      // Get user's Warplets FID
       let warpletsFID: bigint
       try {
         const warpletsBalance = await publicClient.readContract({
@@ -224,7 +245,6 @@ export default function MintingCard({ address }: MintingCardProps) {
           throw new Error("You don't own any Warplets NFT")
         }
 
-        // Get the first Warplets token ID owned by user
         warpletsFID = (await publicClient.readContract({
           address: WARPLETS_ADDRESS,
           abi: NFT_ABI,
@@ -251,25 +271,23 @@ export default function MintingCard({ address }: MintingCardProps) {
       const data = encodeFunctionData({
         abi: NFT_ABI as any[],
         functionName: "claimFuncaster",
-        args: [warpletsFID], // ✅ BENAR - gunakan FID yang sebenarnya
+        args: [warpletsFID],
       })
 
-          // Read current totalMinted before sending tx so we can infer the minted tokenId after
-          let prevTotal: bigint | null = null
-          try {
-            const t = await publicClient.readContract({
-              address: FUNCASTER_ADDRESS,
-              abi: NFT_ABI,
-              functionName: "totalMinted",
-              args: [],
-            })
-            prevTotal = typeof t === "bigint" ? t : BigInt(Number(t))
-          } catch (e) {
-            // ignore — we'll fallback to tx-derived id if necessary
-            prevTotal = null
-          }
+      let prevTotal: bigint | null = null
+      try {
+        const t = await publicClient.readContract({
+          address: FUNCASTER_ADDRESS,
+          abi: NFT_ABI,
+          functionName: "totalMinted",
+          args: [],
+        })
+        prevTotal = typeof t === "bigint" ? t : BigInt(Number(t))
+      } catch (e) {
+        prevTotal = null
+      }
 
-          sendTransaction(
+      sendTransaction(
         {
           to: FUNCASTER_ADDRESS,
           data: data as `0x${string}`,
@@ -282,7 +300,6 @@ export default function MintingCard({ address }: MintingCardProps) {
               description: `Your Funcaster NFT is being minted! TX: ${hash.slice(0, 10)}...`,
             })
 
-            // store tx hash and enter resolving state
             setMintedTxHash(hash)
             setIsResolving(true)
             setResolveError(null)
@@ -290,16 +307,13 @@ export default function MintingCard({ address }: MintingCardProps) {
             try {
               const receipt = await publicClient.waitForTransactionReceipt({ hash })
               if ((receipt as any).status) {
-                // First try to decode the FuncasterClaimed event from logs
                 let decodedTokenId: string | null = null
                 let decodedAssetId: string | null = null
                 for (const log of (receipt as any).logs ?? []) {
                   try {
                     const d = decodeEventLog({ abi: NFT_ABI as any[], data: log.data, topics: log.topics }) as any
-                    // viem returns { args, eventName } or similar; check event name
                     if (d && (d as any).eventName === "FuncasterClaimed") {
                       const args = (d as any).args ?? (d as any).values ?? d
-                      // tokenId may be bigint
                       if (args && args.tokenId != null) {
                         decodedTokenId = String(args.tokenId)
                       }
@@ -309,7 +323,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                       break
                     }
                   } catch {
-                    // ignore decode errors for non-matching logs
                   }
                 }
 
@@ -317,7 +330,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                 if (decodedTokenId) {
                   finalTokenId = decodedTokenId
                 } else {
-                  // fallback to reading totalMinted
                   try {
                     const t2 = await publicClient.readContract({
                       address: FUNCASTER_ADDRESS,
@@ -328,7 +340,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                     const newTotal = typeof t2 === "bigint" ? t2 : BigInt(Number(t2))
                     if (newTotal) finalTokenId = newTotal.toString()
                   } catch (e) {
-                    // last resort: short id from tx hash
                     finalTokenId = hash.slice(2, 12)
                   }
                 }
@@ -338,9 +349,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                   setMintingComplete(true)
                   setShowSuccessModal(true)
 
-                  // If we found tokenURI via contract, prefer that; otherwise use resolver or assetID
                   try {
-                    // If we have decodedAssetId, try building metadata path from that
                     if (decodedAssetId) {
                       const img = `${IMAGES_BASE}${decodedAssetId}.jpeg`
                       setMintedImageUrl(img)
@@ -362,7 +371,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                           const img = ipfsToGateway(meta.image) || meta.image
                           if (img) setMintedImageUrl(img)
                         } else {
-                          // fallback to resolver
                           const fallback = await resolveImageForToken(finalTokenId)
                           if (fallback) setMintedImageUrl(fallback)
                         }
@@ -378,7 +386,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                 }
               }
             } catch (err) {
-              // Fallback: gunakan prevTotal + 1 jika ada, atau tampilkan error
               let tokenIdFallback = "unknown"
               if (prevTotal !== null) {
                 tokenIdFallback = (prevTotal + BigInt(1)).toString()
@@ -434,8 +441,6 @@ export default function MintingCard({ address }: MintingCardProps) {
           return;
       }
 
-      const openseaLink = `https://opensea.io/assets/base/${FUNCASTER_ADDRESS}/${mintedTokenId}`;
-      
       const rawCastText = 
           `🎉 I just minted Funcaster NFT #${mintedTokenId}!\n` +
           `Check the link below to Mint yours.\n` +
@@ -452,6 +457,9 @@ export default function MintingCard({ address }: MintingCardProps) {
     if (!mintedTokenId) return
     window.open(`https://opensea.io/assets/base/${FUNCASTER_ADDRESS}/${mintedTokenId}`, "_blank")
   }
+
+  const currentImageId = loopOrder[currentImageIndex]
+  const currentImageUrl = `${IMAGES_BASE}${currentImageId}.jpeg`
 
   return (
     <div>
@@ -509,7 +517,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                 ) : (
                   <>
                     <img
-                      src={mintedImageUrl ?? `https://base-funcaster.vercel.app/api/image/${mintedTokenId}`}
+                      src={mintedImageUrl ?? `https://thfncstr.vercel.app/api/image/${mintedTokenId}`}
                       alt="Your Funcaster NFT"
                       className="w-full h-full object-cover"
                     />
@@ -525,7 +533,12 @@ export default function MintingCard({ address }: MintingCardProps) {
                 )}
               </div>
             ) : (
-              <img src="/funcaster.gif" alt="Funcaster NFT Preview" className="w-full h-full object-cover" crossOrigin="anonymous" />
+              <img 
+                  src={currentImageUrl} 
+                  alt={`Funcaster NFT Preview ${currentImageId}`} 
+                  className="w-full h-full object-cover" 
+                  crossOrigin="anonymous" 
+              />
             )}
           </div>
 
