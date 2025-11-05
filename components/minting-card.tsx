@@ -14,15 +14,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogDescription,
+  AlertDialogFooter,
 } from "./ui/alert-dialog"
 import { Spinner } from "./ui/spinner"
+import { CheckCircle2, ExternalLink, Share2, Eye } from "lucide-react"
 
 const WARPLETS_ADDRESS = (process.env.NEXT_PUBLIC_WARPLETS_ADDRESS || "0x699727f9e01a822efdcf7333073f0461e5914b4e") as `0x${string}`
 const FUNCASTER_ADDRESS = (process.env.NEXT_PUBLIC_FUNCASTER_ADDRESS || "0xfc3EFAdEBcB41c0a151431F518e06828DA03841a") as `0x${string}`
 
 const METADATA_BASE = process.env.NEXT_PUBLIC_METADATA_BASE || "https://chocolate-brilliant-galliform-191.mypinata.cloud/ipfs/bafybeih4eat5zptl3ll2phhyeij6glgnipi6ixsnssuac5tjvhs5cy3t2i/"
 const IMAGES_BASE = process.env.NEXT_PUBLIC_IMAGES_BASE || "https://chocolate-brilliant-galliform-191.mypinata.cloud/ipfs/bafybeie4gmevlia7jbxcnqyelotdor7dvmfklkv3f7mqnahkdjwetd6yne/"
-
 
 const publicClient = createPublicClient({
   chain: base,
@@ -51,7 +52,6 @@ const generateLoopOrder = () => {
 
 const loopOrder = generateLoopOrder()
 
-
 export default function MintingCard({ address }: MintingCardProps) {
   const { toast } = useToast()
   const { sendTransaction } = useSendTransaction()
@@ -69,6 +69,8 @@ export default function MintingCard({ address }: MintingCardProps) {
   const [alreadyOwnsNFT, setAlreadyOwnsNFT] = useState(false)
   const [existingTokenId, setExistingTokenId] = useState<string | null>(null)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [totalMinted, setTotalMinted] = useState<number>(0)
+  const [maxSupply, setMaxSupply] = useState<number>(10000)
 
   const validAddress = address && isAddress(address) ? (address as `0x${string}`) : undefined
   
@@ -93,6 +95,7 @@ export default function MintingCard({ address }: MintingCardProps) {
         const json = await res.json()
         if (json?.image) return ipfsToGateway(json.image) || json.image
       } catch (e) {
+        // ignore
       }
     }
 
@@ -103,6 +106,7 @@ export default function MintingCard({ address }: MintingCardProps) {
         const r = await fetch(candidate, { method: "HEAD" })
         if (r.ok) return candidate
       } catch {
+        // ignore
       }
     }
 
@@ -129,6 +133,7 @@ export default function MintingCard({ address }: MintingCardProps) {
       try {
         setEligibilityLoading(true)
 
+        // Check if user already owns a Funcaster NFT
         const funcasterBalance = await publicClient.readContract({
           address: FUNCASTER_ADDRESS,
           abi: NFT_ABI,
@@ -172,6 +177,7 @@ export default function MintingCard({ address }: MintingCardProps) {
           return
         }
 
+        // Check Warplets eligibility
         const balance = await publicClient.readContract({
           address: WARPLETS_ADDRESS,
           abi: NFT_ABI,
@@ -181,6 +187,31 @@ export default function MintingCard({ address }: MintingCardProps) {
 
         const holderStatus = balance && typeof balance === "bigint" ? balance > BigInt(0) : false
         setIsHolder(holderStatus)
+
+        // Fetch supply information
+        try {
+          const minted = await publicClient.readContract({
+            address: FUNCASTER_ADDRESS,
+            abi: NFT_ABI,
+            functionName: "totalMinted",
+            args: [],
+          })
+          setTotalMinted(typeof minted === "bigint" ? Number(minted) : 0)
+        } catch {
+          setTotalMinted(0)
+        }
+
+        try {
+          const supply = await publicClient.readContract({
+            address: FUNCASTER_ADDRESS,
+            abi: NFT_ABI,
+            functionName: "MAX_SUPPLY",
+            args: [],
+          })
+          setMaxSupply(typeof supply === "bigint" ? Number(supply) : 10000)
+        } catch {
+          setMaxSupply(10000)
+        }
 
         try {
           const price = await publicClient.readContract({
@@ -232,6 +263,7 @@ export default function MintingCard({ address }: MintingCardProps) {
         description: "Fetching your Warplets FID...",
       })
 
+      // Get user's Warplets FID
       let warpletsFID: bigint
       try {
         const warpletsBalance = await publicClient.readContract({
@@ -323,6 +355,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                       break
                     }
                   } catch {
+                    // ignore
                   }
                 }
 
@@ -340,7 +373,10 @@ export default function MintingCard({ address }: MintingCardProps) {
                     const newTotal = typeof t2 === "bigint" ? t2 : BigInt(Number(t2))
                     if (newTotal) finalTokenId = newTotal.toString()
                   } catch (e) {
-                    finalTokenId = hash.slice(2, 12)
+                    // last resort: use prevTotal + 1
+                    if (prevTotal !== null) {
+                      finalTokenId = (prevTotal + BigInt(1)).toString()
+                    }
                   }
                 }
 
@@ -443,9 +479,7 @@ export default function MintingCard({ address }: MintingCardProps) {
       }
 
       const castText = encodeURIComponent(rawCastText);
-
       const castShareUrl = `https://warpcast.com/~/compose?text=${castText}&embeds[]=${miniAppUrl}`;
-
       window.open(castShareUrl, "_blank");
   };
 
@@ -454,61 +488,118 @@ export default function MintingCard({ address }: MintingCardProps) {
     window.open(`https://opensea.io/assets/base/${FUNCASTER_ADDRESS}/${mintedTokenId}`, "_blank")
   }
 
+  const handleViewOnBasescan = () => {
+    if (!mintedTxHash) return
+    window.open(`https://basescan.org/tx/${mintedTxHash}`, "_blank")
+  }
+
   const currentImageId = loopOrder[currentImageIndex]
   const currentImageUrl = `${IMAGES_BASE}${currentImageId}.jpeg`
+  const remainingSupply = maxSupply - totalMinted
+  const mintProgress = maxSupply > 0 ? (totalMinted / maxSupply) * 100 : 0
 
   return (
     <div>
+      {/* Success Modal - Improved */}
       <AlertDialog open={showSuccessModal} onOpenChange={(open) => { if (!open) setShowSuccessModal(false) }}>
-        <AlertDialogContent className="sm:max-w-[425px]">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-center text-2xl">🎉 Minting Success!</AlertDialogTitle>
-            <AlertDialogDescription className="text-center">
-              Congratulations! Your Funcaster NFT has been successfully minted.
+        <AlertDialogContent className="sm:max-w-[480px] p-0 overflow-hidden">
+          {/* Header with gradient */}
+          <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-6 text-white">
+            <div className="flex items-center justify-center mb-3">
+              <div className="bg-white/20 p-3 rounded-full">
+                <CheckCircle2 className="w-8 h-8" />
+              </div>
+            </div>
+            <AlertDialogTitle className="text-center text-2xl font-bold">
+              Minting Successful!
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-emerald-50 mt-2">
+              Your Funcaster NFT has been minted successfully
             </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="mt-4 space-y-3">
-            <div className="text-center text-sm text-slate-600">
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-4">
+            {/* NFT Preview */}
+            {mintedImageUrl && !isResolving && (
+              <div className="relative rounded-xl overflow-hidden border-2 border-slate-200">
+                <img
+                  src={mintedImageUrl}
+                  alt="Minted NFT"
+                  className="w-full aspect-square object-cover"
+                />
+              </div>
+            )}
+
+            {/* Token Info */}
+            <div className="bg-slate-50 rounded-lg p-4 space-y-2">
               {mintedTokenId && (
-                <div>Token ID: <span className="font-mono text-slate-800">{mintedTokenId}</span></div>
-              )}
-              {mintedTxHash && (
-                <div>
-                  TX: <a className="underline" target="_blank" rel="noreferrer" href={`https://base.blockscout.com/tx/${mintedTxHash}`}>{mintedTxHash.slice(0,10)}...</a>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Token ID</span>
+                  <span className="font-mono font-semibold text-slate-900">#{mintedTokenId}</span>
                 </div>
               )}
-              {resolveError && (
-                <div className="text-xs text-red-600 mt-2">Error resolving metadata: {resolveError}</div>
+              {mintedTxHash && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Transaction</span>
+                  <button
+                    onClick={handleViewOnBasescan}
+                    className="flex items-center gap-1 text-sm font-mono text-blue-600 hover:text-blue-700"
+                  >
+                    {mintedTxHash.slice(0, 6)}...{mintedTxHash.slice(-4)}
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                </div>
               )}
             </div>
 
-            {isResolving ? (
-              <div className="flex items-center justify-center py-4">
-                <Spinner className="w-6 h-6 text-slate-700" />
-                <span className="ml-2 text-sm text-slate-700">Resolving metadata...</span>
+            {isResolving && (
+              <div className="flex items-center justify-center py-6 text-slate-600">
+                <Spinner className="w-5 h-5 mr-2" />
+                <span className="text-sm">Loading NFT metadata...</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <Button className="w-full bg-purple-600 hover:bg-purple-700 text-white" onClick={handleShareToCast}>
-                  Share to Cast
-                </Button>
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={handleViewOnOpensea}>
-                  View on OpenSea
-                </Button>
+            )}
+
+            {resolveError && (
+              <div className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg">
+                {resolveError}
               </div>
             )}
           </div>
+
+          {/* Actions */}
+          <AlertDialogFooter className="p-6 pt-0 flex-col sm:flex-col gap-2">
+            <Button
+              onClick={handleShareToCast}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-5 text-base"
+              disabled={isResolving}
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Share on Warpcast
+            </Button>
+            <Button
+              onClick={handleViewOnOpensea}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-5 text-base"
+              disabled={isResolving}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              View on OpenSea
+            </Button>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <Card className="bg-white border-0 overflow-hidden shadow-lg">
+      {/* Main Card */}
+      <Card className="bg-white border-0 overflow-hidden shadow-xl">
         <div className="p-8 space-y-6">
-          <div className="aspect-square w-full bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center overflow-hidden">
+          {/* NFT Preview */}
+          <div className="aspect-square w-full bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center overflow-hidden relative">
             {(mintingComplete && mintedTokenId) || alreadyOwnsNFT ? (
               <div className="relative w-full h-full">
                 {isResolving ? (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <Spinner className="w-8 h-8 text-slate-700" />
+                  <div className="w-full h-full flex flex-col items-center justify-center">
+                    <Spinner className="w-10 h-10 text-slate-700 mb-3" />
+                    <p className="text-sm text-slate-600">Loading your NFT...</p>
                   </div>
                 ) : (
                   <>
@@ -517,12 +608,21 @@ export default function MintingCard({ address }: MintingCardProps) {
                       alt="Your Funcaster NFT"
                       className="w-full h-full object-cover"
                     />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
                     <div className="absolute bottom-4 left-4 right-4 flex gap-2">
-                      <Button className="flex-1 bg-purple-600 hover:bg-purple-700 text-white" onClick={handleShareToCast}>
-                        Share to Cast
+                      <Button 
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-lg backdrop-blur-sm" 
+                        onClick={handleShareToCast}
+                      >
+                        <Share2 className="w-4 h-4 mr-2" />
+                        Share
                       </Button>
-                      <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleViewOnOpensea}>
-                        View on OpenSea
+                      <Button 
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg backdrop-blur-sm" 
+                        onClick={handleViewOnOpensea}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        OpenSea
                       </Button>
                     </div>
                   </>
@@ -530,84 +630,144 @@ export default function MintingCard({ address }: MintingCardProps) {
               </div>
             ) : (
               <img 
-                  src={currentImageUrl} 
-                  alt={`Funcaster NFT Preview ${currentImageId}`} 
-                  className="w-full h-full object-cover" 
-                  crossOrigin="anonymous" 
+                src={currentImageUrl} 
+                alt="Funcaster NFT Preview" 
+                className="w-full h-full object-cover transition-opacity duration-75" 
               />
             )}
           </div>
 
-        <div className="space-y-4">
-          <h2 className="text-2xl font-semibold text-slate-900">The Funcaster</h2>
+          {/* Title & Status */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-900">The Funcaster</h2>
+              <p className="text-slate-600 text-sm mt-1">Exclusive NFT Collection on Base</p>
+            </div>
 
-          {alreadyOwnsNFT ? (
-            <div className="flex items-center space-x-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-              <span className="text-sm font-medium text-blue-700">
-                You own NFT #{mintedTokenId}
-              </span>
-            </div>
-          ) : eligibilityLoading ? (
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
-              <span className="text-sm text-slate-600">Verifying eligibility...</span>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-3">
-              <div className={`w-2.5 h-2.5 rounded-full ${isHolder ? "bg-emerald-500" : "bg-red-500"}`}></div>
-              <span className={`text-sm font-medium ${isHolder ? "text-emerald-700" : "text-red-700"}`}>
-                {isHolder ? "Eligible to Mint" : "Not Eligible"}
-              </span>
-            </div>
+            {/* Status Badge */}
+            {alreadyOwnsNFT ? (
+              <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-blue-900">
+                    You own NFT #{mintedTokenId}
+                  </p>
+                  <p className="text-xs text-blue-700 mt-0.5">
+                    Already minted • View your NFT below
+                  </p>
+                </div>
+              </div>
+            ) : eligibilityLoading ? (
+              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <Spinner className="w-4 h-4 text-slate-600" />
+                <p className="text-sm text-slate-600">Checking eligibility...</p>
+              </div>
+            ) : (
+              <div className={`flex items-center gap-3 border rounded-xl p-4 ${
+                isHolder 
+                  ? "bg-emerald-50 border-emerald-200" 
+                  : "bg-red-50 border-red-200"
+              }`}>
+                <div className={`w-2.5 h-2.5 rounded-full ${isHolder ? "bg-emerald-500" : "bg-red-500"}`}></div>
+                <div className="flex-1">
+                  <p className={`text-sm font-semibold ${isHolder ? "text-emerald-900" : "text-red-900"}`}>
+                    {isHolder ? "Eligible to Mint" : "Not Eligible"}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${isHolder ? "text-emerald-700" : "text-red-700"}`}>
+                    {isHolder 
+                      ? "You hold a Warplets NFT • Ready to mint" 
+                      : "Warplets NFT required to mint"}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Supply & Price Info */}
+          {!alreadyOwnsNFT && (
+            <>
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-5 space-y-4 border border-slate-200">
+                {/* Supply Progress */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-slate-700">Supply</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {totalMinted.toLocaleString()} / {maxSupply.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full transition-all duration-500 rounded-full"
+                      style={{ width: `${mintProgress}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-slate-600">
+                    <span>{remainingSupply.toLocaleString()} remaining</span>
+                    <span>{mintProgress.toFixed(1)}% minted</span>
+                  </div>
+                </div>
+
+                <div className="h-px bg-slate-200"></div>
+
+                {/* Price Info */}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-600">Mint Price</span>
+                  <span className="text-lg font-bold text-slate-900">
+                    {mintPrice ? (Number(mintPrice) / 1e18).toFixed(5) : "—"} ETH
+                  </span>
+                </div>
+              </div>
+
+              {/* Mint Button */}
+              <Button
+                onClick={handleMint}
+                disabled={!isHolder || isMinting || eligibilityLoading}
+                className={`w-full py-7 text-lg font-bold rounded-xl transition-all duration-200 shadow-lg ${
+                  isHolder && !isMinting
+                    ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white"
+                    : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                }`}
+              >
+                {eligibilityLoading
+                  ? "Verifying Eligibility..."
+                  : isMinting
+                    ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Spinner className="w-5 h-5" />
+                        Minting in Progress...
+                      </span>
+                    )
+                    : !isHolder
+                      ? "Not Eligible to Mint"
+                      : "Mint Funcaster NFT"}
+              </Button>
+
+              {/* Info Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Minting Requirements</h4>
+                <ul className="space-y-1.5 text-xs text-blue-800">
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Must hold a Warplets NFT to be eligible</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Each Warplets FID can only mint once</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Transaction processed via Farcaster wallet on Base</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Your NFT will be randomly assigned from 100 unique designs</span>
+                  </li>
+                </ul>
+              </div>
+            </>
           )}
         </div>
-
-        {!alreadyOwnsNFT && (
-          <>
-            <div className="bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Mint Price</span>
-                <span className="text-sm font-semibold text-slate-900">
-                  {mintPrice ? (Number(mintPrice) / 1e18).toFixed(5) : "—"} ETH
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-slate-600">Status</span>
-                <span className="text-sm font-semibold text-slate-900">
-                  {eligibilityLoading ? "Checking..." : isHolder ? "Ready" : "Locked"}
-                </span>
-              </div>
-            </div>
-
-            <Button
-              onClick={handleMint}
-              disabled={!isHolder || isMinting || eligibilityLoading}
-              className={`w-full py-6 text-base font-semibold rounded-lg transition-all duration-200 ${
-                isHolder
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-slate-200 text-slate-500 cursor-not-allowed"
-              }`}
-            >
-              {eligibilityLoading
-                ? "Verifying Eligibility..."
-                : isMinting
-                  ? "Minting in Progress..."
-                  : !isHolder
-                    ? "Not Eligible"
-                    : "Mint Now"}
-            </Button>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-xs text-blue-800 font-medium">
-                Only Warplets NFT holders can mint Funcaster. This transaction will be processed through your Farcaster
-                wallet on Base Mainnet.
-              </p>
-            </div>
-          </>
-        )}
-      </div>
-    </Card>
+      </Card>
     </div>
   )
 }
