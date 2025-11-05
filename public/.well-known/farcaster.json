@@ -1,0 +1,28 @@
+{
+  "frame": {
+    "name": "The Funcaster",
+    "version": "1",
+    "iconUrl": "https://thfncstr.vercel.app/funcaster.git",
+    "homeUrl": "https://thfncstr.vercel.app",
+    "imageUrl": "https://thfncstr.vercel.app/funcaster.gif",
+    "buttonTitle": "mint",
+    "splashImageUrl": "https://thfncstr.vercel.app/funcaster.gif",
+    "splashBackgroundColor": "#6a0ad1",
+    "webhookUrl": "https://thfncstr.vercel.app/api/webhook",
+    "subtitle": "A Tribute to Warplets Holders",
+    "description": "The Funcaster is a special edition NFT collection with a $10,000$ supply, built exclusively for Warplets holders within the Base ecosystem. This project directly links your on-chain identity (your Warplets FID) to the art.Every Funcaster is unique and deterministically generated. Our smart contract uses a unique algorithm that draws specific numbers from the Warplets FID you use for minting, resulting in a unique tie to your existing digital asset. ",
+    "primaryCategory": "art-creativity",
+    "tags": [
+      "nft",
+      "community",
+      "warplets",
+      "mint",
+      "farcaster"
+    ]
+  },
+  "accountAssociation": {
+    "header": "eyJmaWQiOjM5MDUyMSwidHlwZSI6ImF1dGgiLCJrZXkiOiIweDQyYjM1RDc2MWRmNWE1NTQ4Nzc1OGZGMEQ3MjM3NzEzNTg4NjI3MzcifQ",
+    "payload": "eyJkb21haW4iOiJ0aGZuY3N0ci52ZXJjZWwuYXBwIn0",
+    "signature": "7t3GZgGvU1D3/Wpr8CGGdKFrjSuXFc0tVRmq9QmuACUWDJP3H2MczvuHEUYH0tkDlUyxVI7KKlLefN+UTmAA3Rs="
+  }
+}

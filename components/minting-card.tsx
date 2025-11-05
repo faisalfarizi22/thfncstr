@@ -424,8 +424,29 @@ export default function MintingCard({ address }: MintingCardProps) {
   }
 
   const handleShareToCast = () => {
-    window.open(`https://warpcast.com/~/compose?text=🎉 Just minted my Funcaster NFT! %23TheFuncaster`, "_blank")
-  }
+      const liveAppUrl = "https://thfncstr.vercel.app/";
+      
+      if (!mintedTokenId) {
+          const fallbackText = encodeURIComponent(
+              `🎉 I just discovered The Funcaster! Time to Mint your favorite NFT. %23TheFuncaster`
+          );
+          window.open(`https://warpcast.com/~/compose?text=${fallbackText}&embeds[]=${liveAppUrl}`, "_blank");
+          return;
+      }
+
+      const openseaLink = `https://opensea.io/assets/base/${FUNCASTER_ADDRESS}/${mintedTokenId}`;
+      
+      const rawCastText = 
+          `🎉 I just minted Funcaster NFT #${mintedTokenId}!\n` +
+          `Check the link below to Mint yours.\n` +
+          `%23TheFuncaster %23Funcaster`;
+
+      const castText = encodeURIComponent(rawCastText);
+
+      const castShareUrl = `https://warpcast.com/~/compose?text=${castText}&embeds[]=${liveAppUrl}`;
+
+      window.open(castShareUrl, "_blank");
+  };
 
   const handleViewOnOpensea = () => {
     if (!mintedTokenId) return
