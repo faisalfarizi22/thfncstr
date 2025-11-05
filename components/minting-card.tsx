@@ -95,7 +95,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         const json = await res.json()
         if (json?.image) return ipfsToGateway(json.image) || json.image
       } catch (e) {
-        // ignore
       }
     }
 
@@ -106,7 +105,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         const r = await fetch(candidate, { method: "HEAD" })
         if (r.ok) return candidate
       } catch {
-        // ignore
       }
     }
 
@@ -133,7 +131,6 @@ export default function MintingCard({ address }: MintingCardProps) {
       try {
         setEligibilityLoading(true)
 
-        // Check if user already owns a Funcaster NFT
         const funcasterBalance = await publicClient.readContract({
           address: FUNCASTER_ADDRESS,
           abi: NFT_ABI,
@@ -177,7 +174,6 @@ export default function MintingCard({ address }: MintingCardProps) {
           return
         }
 
-        // Check Warplets eligibility
         const balance = await publicClient.readContract({
           address: WARPLETS_ADDRESS,
           abi: NFT_ABI,
@@ -188,7 +184,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         const holderStatus = balance && typeof balance === "bigint" ? balance > BigInt(0) : false
         setIsHolder(holderStatus)
 
-        // Fetch supply information
         try {
           const minted = await publicClient.readContract({
             address: FUNCASTER_ADDRESS,
@@ -263,7 +258,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         description: "Fetching your Warplets FID...",
       })
 
-      // Get user's Warplets FID
       let warpletsFID: bigint
       try {
         const warpletsBalance = await publicClient.readContract({
@@ -355,7 +349,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                       break
                     }
                   } catch {
-                    // ignore
                   }
                 }
 
@@ -373,7 +366,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                     const newTotal = typeof t2 === "bigint" ? t2 : BigInt(Number(t2))
                     if (newTotal) finalTokenId = newTotal.toString()
                   } catch (e) {
-                    // last resort: use prevTotal + 1
                     if (prevTotal !== null) {
                       finalTokenId = (prevTotal + BigInt(1)).toString()
                     }
@@ -467,20 +459,22 @@ export default function MintingCard({ address }: MintingCardProps) {
   }
 
   const handleShareToCast = () => {
-      const miniAppUrl = "https://farcaster.xyz/miniapps/6fh_i3HvDXkG/the-funcaster";
-      
-      let rawCastText = `🎉 I just minted Funcaster NFT #${mintedTokenId || 'unknown'}!\n`;
-      rawCastText += `Check out The Funcaster Mini App here: ${miniAppUrl}\n`;
-      
-      if (mintedImageUrl) {
-          rawCastText += `\n ${mintedImageUrl}`; 
-      } else {
-          rawCastText += `%23TheFuncaster %23Funcaster`;
-      }
-
-      const castText = encodeURIComponent(rawCastText);
-      const castShareUrl = `https://warpcast.com/~/compose?text=${castText}&embeds[]=${miniAppUrl}`;
-      window.open(castShareUrl, "_blank");
+    const miniAppUrl = "https://farcaster.xyz/miniapps/6fh_i3HvDXkG/the-funcaster";
+    
+    const castText = `🎉 I just minted Funcaster NFT #${mintedTokenId || 'unknown'}!\n\nCheck out The Funcaster Mini App:`;
+    const encodedText = encodeURIComponent(castText);
+    
+    const embeds: string[] = [];
+    embeds.push(encodeURIComponent(miniAppUrl));
+    
+    if (mintedImageUrl) {
+      embeds.push(encodeURIComponent(mintedImageUrl));
+    }
+    
+    const embedParams = embeds.map(e => `embeds[]=${e}`).join('&');
+    const castShareUrl = `https://warpcast.com/~/compose?text=${encodedText}&${embedParams}`;
+    
+    window.open(castShareUrl, "_blank");
   };
 
   const handleViewOnOpensea = () => {
@@ -575,7 +569,7 @@ export default function MintingCard({ address }: MintingCardProps) {
               disabled={isResolving}
             >
               <Share2 className="w-4 h-4 mr-2" />
-              Share on farcaster
+              Share on Warpcast
             </Button>
             <Button
               onClick={handleViewOnOpensea}
@@ -757,6 +751,10 @@ export default function MintingCard({ address }: MintingCardProps) {
                   <li className="flex items-start gap-2">
                     <span className="text-blue-600 mt-0.5">•</span>
                     <span>Transaction processed via Farcaster wallet on Base</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Your NFT will be randomly assigned from 100 unique designs</span>
                   </li>
                 </ul>
               </div>
