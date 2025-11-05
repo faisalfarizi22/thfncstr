@@ -473,7 +473,7 @@ export default function MintingCard({ address }: MintingCardProps) {
       rawCastText += `Check out The Funcaster Mini App here: ${miniAppUrl}\n`;
       
       if (mintedImageUrl) {
-          rawCastText += `\n[NFT Image] ${mintedImageUrl}`; 
+          rawCastText += `\n ${mintedImageUrl}`; 
       } else {
           rawCastText += `%23TheFuncaster %23Funcaster`;
       }
@@ -575,7 +575,7 @@ export default function MintingCard({ address }: MintingCardProps) {
               disabled={isResolving}
             >
               <Share2 className="w-4 h-4 mr-2" />
-              Share on Warpcast
+              Share on farcaster
             </Button>
             <Button
               onClick={handleViewOnOpensea}
@@ -757,10 +757,6 @@ export default function MintingCard({ address }: MintingCardProps) {
                   <li className="flex items-start gap-2">
                     <span className="text-blue-600 mt-0.5">•</span>
                     <span>Transaction processed via Farcaster wallet on Base</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">•</span>
-                    <span>Your NFT will be randomly assigned from 100 unique designs</span>
                   </li>
                 </ul>
               </div>
