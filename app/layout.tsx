@@ -14,7 +14,7 @@ const miniappEmbed = {
   version: "1",
   imageUrl: `${APP_URL}/image.png`, 
   button: {
-    title: "Mint Funcaster NFT", 
+    title: "Mint Yours", 
     action: {
       type: "launch_miniapp",
       url: APP_URL,

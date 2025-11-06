@@ -167,7 +167,7 @@ export default function MintingCard({ address }: MintingCardProps) {
               description: `You already own Funcaster NFT #${tokenIdStr}`,
             })
           } catch (error) {
-            console.error("[v0] Error fetching existing NFT:", error)
+            console.error("Error fetching existing NFT:", error)
           }
 
           setEligibilityLoading(false)
@@ -235,7 +235,7 @@ export default function MintingCard({ address }: MintingCardProps) {
 
         setEligibilityLoading(false)
       } catch (error) {
-        console.error("[v0] Eligibility check error:", error)
+        console.error("Eligibility check error:", error)
         toast({
           title: "Error",
           description: "Failed to check eligibility. Please try again.",
@@ -449,7 +449,7 @@ export default function MintingCard({ address }: MintingCardProps) {
       )
     } catch (error) {
       setIsMinting(false)
-      console.error("[v0] Mint error:", error)
+      console.error("Mint error:", error)
       toast({
         title: "Minting Error",
         description: error instanceof Error ? error.message : "Failed to mint NFT. Please try again.",
@@ -647,7 +647,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                     You own NFT #{mintedTokenId}
                   </p>
                   <p className="text-xs text-blue-700 mt-0.5">
-                    Already minted • View your NFT below
+                    Already minted • View your NFT on OpenSea
                   </p>
                 </div>
               </div>
@@ -733,7 +733,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                     )
                     : !isHolder
                       ? "Not Eligible to Mint"
-                      : "Mint Funcaster NFT"}
+                      : "Mint Yours"}
               </Button>
 
               {/* Info Box */}
