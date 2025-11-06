@@ -86,63 +86,79 @@ export default function MintingCard({ address }: MintingCardProps) {
 
   const getAssetIdFromTokenId = async (tokenId: string): Promise<string | null> => {
     try {
-      const assetId = await publicClient.readContract({
+      console.log(`[getAssetIdFromTokenId] Getting assetID for tokenId: ${tokenId}`)
+      const result = await publicClient.readContract({
         address: FUNCASTER_ADDRESS,
         abi: NFT_ABI,
-        functionName: "tokenIdToAssetId",
+        functionName: "assetIDLookup",
         args: [BigInt(tokenId)],
       })
-      return assetId ? String(assetId) : null
+      
+      const assetId = typeof result === 'bigint' ? result : BigInt(String(result))
+      const assetIdStr = assetId.toString()
+      console.log(`[getAssetIdFromTokenId] TokenId ${tokenId} → AssetId ${assetIdStr}`)
+      return assetIdStr
     } catch (error) {
-      console.error("Error getting assetId from tokenId:", error)
+      console.error(`[getAssetIdFromTokenId] Error getting assetId for tokenId ${tokenId}:`, error)
       return null
     }
   }
 
-  const resolveImageForAsset = async (assetId: string) => {
-    const directImageUrl = `${IMAGES_BASE}${assetId}.jpeg`
+  const resolveImageForAsset = async (assetId: string): Promise<string | null> => {
+    console.log(`[resolveImageForAsset] Resolving image for assetId: ${assetId}`)
     
-    try {
-      const r = await fetch(directImageUrl, { method: "HEAD" })
-      if (r.ok) return directImageUrl
-    } catch (e) {
-      console.error("Error fetching direct image:", e)
-    }
-
-    const exts = [".png", ".jpg", ".webp", ""]
-    for (const ext of exts) {
-      const candidate = `${IMAGES_BASE}${assetId}${ext}`
+    const candidates = [
+      `${IMAGES_BASE}${assetId}.jpeg`,
+      `${IMAGES_BASE}${assetId}.jpg`,
+      `${IMAGES_BASE}${assetId}.png`,
+      `${IMAGES_BASE}${assetId}.webp`,
+      `${IMAGES_BASE}${assetId}`,
+    ]
+    
+    for (const imageUrl of candidates) {
       try {
-        const r = await fetch(candidate, { method: "HEAD" })
-        if (r.ok) return candidate
-      } catch {
+        const response = await fetch(imageUrl, { method: "HEAD" })
+        if (response.ok) {
+          console.log(`[resolveImageForAsset] Found image: ${imageUrl}`)
+          return imageUrl
+        }
+      } catch (error) {
       }
     }
-
+    
+    console.warn(`[resolveImageForAsset] No image found for assetId: ${assetId}`)
     return null
   }
 
-  const resolveImageForToken = async (tokenId: string) => {
+  const resolveImageForToken = async (tokenId: string): Promise<string | null> => {
+    console.log(`[resolveImageForToken] Resolving image for tokenId: ${tokenId}`)
+    
     const assetId = await getAssetIdFromTokenId(tokenId)
     if (assetId) {
       const imageUrl = await resolveImageForAsset(assetId)
       if (imageUrl) return imageUrl
     }
 
-    const candidates = [
+    const metadataCandidates = [
       `${METADATA_BASE}${tokenId}.json`,
       `${METADATA_BASE}${tokenId}`,
     ]
-    for (const url of candidates) {
+    
+    for (const url of metadataCandidates) {
       try {
         const res = await fetch(url)
         if (!res.ok) continue
         const json = await res.json()
-        if (json?.image) return ipfsToGateway(json.image) || json.image
+        if (json?.image) {
+          const imageUrl = ipfsToGateway(json.image) || json.image
+          console.log(`[resolveImageForToken] Found image from metadata: ${imageUrl}`)
+          return imageUrl
+        }
       } catch (e) {
       }
     }
 
+    console.warn(`[resolveImageForToken] No image found for tokenId: ${tokenId}`)
     return null
   }
 
@@ -176,6 +192,7 @@ export default function MintingCard({ address }: MintingCardProps) {
         const ownsNFT = funcasterBalance && typeof funcasterBalance === "bigint" ? funcasterBalance > BigInt(0) : false
 
         if (ownsNFT) {
+          console.log("[checkEligibility] User already owns Funcaster NFT")
           try {
             const tokenId = (await publicClient.readContract({
               address: FUNCASTER_ADDRESS,
@@ -185,6 +202,8 @@ export default function MintingCard({ address }: MintingCardProps) {
             })) as unknown as bigint
 
             const tokenIdStr = tokenId.toString()
+            console.log(`[checkEligibility] Existing tokenId: ${tokenIdStr}`)
+            
             setExistingTokenId(tokenIdStr)
             setMintedTokenId(tokenIdStr)
             setAlreadyOwnsNFT(true)
@@ -194,12 +213,17 @@ export default function MintingCard({ address }: MintingCardProps) {
             
             const assetId = await getAssetIdFromTokenId(tokenIdStr)
             if (assetId) {
+              console.log(`[checkEligibility] Found assetId: ${assetId}`)
               setMintedAssetId(assetId)
               const imageUrl = await resolveImageForAsset(assetId)
               if (imageUrl) {
+                console.log(`[checkEligibility] Setting image: ${imageUrl}`)
                 setMintedImageUrl(imageUrl)
+              } else {
+                console.warn("[checkEligibility] Could not resolve image for assetId")
               }
             } else {
+              console.warn("[checkEligibility] Could not get assetId, trying fallback")
               const imageUrl = await resolveImageForToken(tokenIdStr)
               if (imageUrl) {
                 setMintedImageUrl(imageUrl)
@@ -213,7 +237,8 @@ export default function MintingCard({ address }: MintingCardProps) {
               description: `You already own Funcaster NFT #${tokenIdStr}${assetId ? ` (Asset #${assetId})` : ''}`,
             })
           } catch (error) {
-            console.error("Error fetching existing NFT:", error)
+            console.error("[checkEligibility] Error fetching existing NFT:", error)
+            setIsResolving(false)
           }
 
           setEligibilityLoading(false)
@@ -229,6 +254,7 @@ export default function MintingCard({ address }: MintingCardProps) {
 
         const holderStatus = balance && typeof balance === "bigint" ? balance > BigInt(0) : false
         setIsHolder(holderStatus)
+        console.log(`[checkEligibility] Warplets holder status: ${holderStatus}`)
 
         try {
           const minted = await publicClient.readContract({
@@ -281,7 +307,7 @@ export default function MintingCard({ address }: MintingCardProps) {
 
         setEligibilityLoading(false)
       } catch (error) {
-        console.error("Eligibility check error:", error)
+        console.error("[checkEligibility] Eligibility check error:", error)
         toast({
           title: "Error",
           description: "Failed to check eligibility. Please try again.",
@@ -299,6 +325,8 @@ export default function MintingCard({ address }: MintingCardProps) {
 
     try {
       setIsMinting(true)
+      console.log("[handleMint] Starting mint process")
+      
       toast({
         title: "Minting Started",
         description: "Fetching your Warplets FID...",
@@ -324,7 +352,7 @@ export default function MintingCard({ address }: MintingCardProps) {
           args: [validAddress, BigInt(0)],
         })) as unknown as bigint
 
-        console.log("Using Warplets FID:", warpletsFID.toString())
+        console.log(`[handleMint] Using Warplets FID: ${warpletsFID.toString()}`)
       } catch (error) {
         setIsMinting(false)
         toast({
@@ -346,19 +374,6 @@ export default function MintingCard({ address }: MintingCardProps) {
         args: [warpletsFID],
       })
 
-      let prevTotal: bigint | null = null
-      try {
-        const t = await publicClient.readContract({
-          address: FUNCASTER_ADDRESS,
-          abi: NFT_ABI,
-          functionName: "totalMinted",
-          args: [],
-        })
-        prevTotal = typeof t === "bigint" ? t : BigInt(Number(t))
-      } catch (e) {
-        prevTotal = null
-      }
-
       sendTransaction(
         {
           to: FUNCASTER_ADDRESS,
@@ -367,6 +382,7 @@ export default function MintingCard({ address }: MintingCardProps) {
         },
         {
           onSuccess: async (hash) => {
+            console.log(`[handleMint] Transaction sent: ${hash}`)
             toast({
               title: "Success!",
               description: `Your Funcaster NFT is being minted! TX: ${hash.slice(0, 10)}...`,
@@ -377,134 +393,94 @@ export default function MintingCard({ address }: MintingCardProps) {
             setResolveError(null)
 
             try {
+              console.log("[handleMint] Waiting for transaction receipt...")
               const receipt = await publicClient.waitForTransactionReceipt({ hash })
+              
               if ((receipt as any).status) {
+                console.log("[handleMint] Transaction confirmed!")
+                
                 let decodedTokenId: string | null = null
                 let decodedAssetId: string | null = null
                 
                 for (const log of (receipt as any).logs ?? []) {
                   try {
-                    const d = decodeEventLog({ abi: NFT_ABI as any[], data: log.data, topics: log.topics }) as any
+                    const d = decodeEventLog({ 
+                      abi: NFT_ABI as any[], 
+                      data: log.data, 
+                      topics: log.topics 
+                    }) as any
+                    
                     if (d && (d as any).eventName === "FuncasterClaimed") {
                       const args = (d as any).args ?? (d as any).values ?? d
+                      
                       if (args && args.tokenId != null) {
                         decodedTokenId = String(args.tokenId)
+                        console.log(`[handleMint] Decoded tokenId from event: ${decodedTokenId}`)
                       }
+                      
                       if (args && args.assetID != null) {
                         decodedAssetId = String(args.assetID)
+                        console.log(`[handleMint] Decoded assetID from event: ${decodedAssetId}`)
                       }
+                      
                       break
                     }
-                  } catch {
+                  } catch (err) {
+                    console.error("[handleMint] Error decoding log:", err)
                   }
                 }
-
-                let finalTokenId: string | null = null
-                let finalAssetId: string | null = decodedAssetId
 
                 if (decodedTokenId) {
-                  finalTokenId = decodedTokenId
-                } else {
-                  try {
-                    const t2 = await publicClient.readContract({
-                      address: FUNCASTER_ADDRESS,
-                      abi: NFT_ABI,
-                      functionName: "totalMinted",
-                      args: [],
-                    })
-                    const newTotal = typeof t2 === "bigint" ? t2 : BigInt(Number(t2))
-                    if (newTotal) finalTokenId = newTotal.toString()
-                  } catch (e) {
-                    if (prevTotal !== null) {
-                      finalTokenId = (prevTotal + BigInt(1)).toString()
-                    }
-                  }
-                }
-
-                if (finalTokenId) {
-                  setMintedTokenId(finalTokenId)
+                  console.log(`[handleMint] Setting minted token ID: ${decodedTokenId}`)
+                  setMintedTokenId(decodedTokenId)
                   setMintingComplete(true)
                   setShowSuccessModal(true)
 
+                  let finalAssetId = decodedAssetId
+                  
+                  if (!finalAssetId) {
+                    console.log("[handleMint] AssetID not in event, fetching from contract...")
+                    finalAssetId = await getAssetIdFromTokenId(decodedTokenId)
+                  }
+
                   if (finalAssetId) {
+                    console.log(`[handleMint] Using assetID: ${finalAssetId}`)
                     setMintedAssetId(finalAssetId)
-                    try {
-                      const img = await resolveImageForAsset(finalAssetId)
-                      if (img) {
-                        setMintedImageUrl(img)
-                      }
-                    } catch (e) {
-                      console.error("Error resolving image for assetId:", e)
+                    
+                    const imageUrl = await resolveImageForAsset(finalAssetId)
+                    if (imageUrl) {
+                      console.log(`[handleMint] Setting minted image: ${imageUrl}`)
+                      setMintedImageUrl(imageUrl)
+                    } else {
+                      console.warn("[handleMint] Could not resolve image for assetID")
+                      setResolveError("Image not found for this NFT")
                     }
                   } else {
-                    try {
-                      const assetId = await getAssetIdFromTokenId(finalTokenId)
-                      if (assetId) {
-                        setMintedAssetId(assetId)
-                        const img = await resolveImageForAsset(assetId)
-                        if (img) {
-                          setMintedImageUrl(img)
-                        }
-                      } else {
-                        const tokenUriRes = await publicClient.readContract({
-                          address: FUNCASTER_ADDRESS,
-                          abi: NFT_ABI,
-                          functionName: "tokenURI",
-                          args: [BigInt(finalTokenId)],
-                        })
-                        const tokenUri = typeof tokenUriRes === "string" ? tokenUriRes : String(tokenUriRes)
-                        if (tokenUri) {
-                          try {
-                            const metaUrl = tokenUri.startsWith("ipfs://") ? ipfsToGateway(tokenUri) || tokenUri : tokenUri
-                            const metaResp = await fetch(metaUrl)
-                            if (metaResp.ok) {
-                              const meta = await metaResp.json()
-                              const img = ipfsToGateway(meta.image) || meta.image
-                              if (img) setMintedImageUrl(img)
-                            }
-                          } catch (e) {
-                            console.error("Error fetching tokenURI metadata:", e)
-                          }
-                        }
-                      }
-                    } catch (e) {
-                      console.error("Error getting assetId:", e)
-                    }
+                    console.error("[handleMint] Could not get assetID!")
+                    setResolveError("Could not determine NFT asset ID")
                   }
+                } else {
+                  console.warn("[handleMint] Could not decode tokenId from event")
+                  setResolveError("Could not confirm token ID from transaction")
                 }
-              }
-            } catch (err) {
-              let tokenIdFallback = "unknown"
-              if (prevTotal !== null) {
-                tokenIdFallback = (prevTotal + BigInt(1)).toString()
-              }
-              
-              setMintedTokenId(tokenIdFallback)
-              setMintingComplete(true)
-              setShowSuccessModal(true)
-              
-              if (tokenIdFallback !== "unknown") {
-                getAssetIdFromTokenId(tokenIdFallback).then(async (assetId) => {
-                  if (assetId) {
-                    setMintedAssetId(assetId)
-                    const url = await resolveImageForAsset(assetId)
-                    if (url) setMintedImageUrl(url)
-                  } else {
-                    const url = await resolveImageForToken(tokenIdFallback)
-                    if (url) setMintedImageUrl(url)
-                  }
+              } else {
+                console.error("[handleMint] Transaction failed")
+                toast({
+                  title: "Transaction Failed",
+                  description: "The minting transaction was reverted.",
+                  variant: "destructive",
                 })
               }
-              
-              setResolveError("Could not confirm token ID from receipt. Please check Basescan.")
-              console.warn("Could not confirm receipt, using fallback token id", err)
+            } catch (err) {
+              console.error("[handleMint] Error waiting for receipt:", err)
+              setResolveError("Could not confirm transaction. Please check Basescan.")
             } finally {
               setIsResolving(false)
+              setIsMinting(false)
             }
-
-            setIsMinting(false)
           },
           onError: (error) => {
+            console.error("[handleMint] Transaction error:", error)
             setIsMinting(false)
             toast({
               title: "Minting Error",
@@ -516,7 +492,7 @@ export default function MintingCard({ address }: MintingCardProps) {
       )
     } catch (error) {
       setIsMinting(false)
-      console.error("Mint error:", error)
+      console.error("[handleMint] Mint error:", error)
       toast({
         title: "Minting Error",
         description: error instanceof Error ? error.message : "Failed to mint NFT. Please try again.",
@@ -562,7 +538,7 @@ export default function MintingCard({ address }: MintingCardProps) {
 
   return (
     <div>
-      {/* Success Modal - Improved */}
+      {/* Success Modal */}
       <AlertDialog open={showSuccessModal} onOpenChange={(open) => { if (!open) setShowSuccessModal(false) }}>
         <AlertDialogContent className="sm:max-w-[480px] p-0 overflow-hidden">
           {/* Header with gradient */}
@@ -603,7 +579,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                   <div className="text-center space-y-2">
                     <p className="text-sm text-slate-600 font-medium">NFT #{mintedTokenId}</p>
                     {mintedAssetId && (
-                      <p className="text-xs text-slate-500">Asset #{mintedAssetId}</p>
+                      <p className="text-xs text-emerald-600 font-bold">Asset #{mintedAssetId}</p>
                     )}
                     {resolveError && (
                       <p className="text-xs text-amber-600 mt-2 max-w-[200px] mx-auto">{resolveError}</p>
@@ -679,7 +655,7 @@ export default function MintingCard({ address }: MintingCardProps) {
                 ) : (
                   <>
                     <img
-                      src={mintedImageUrl ?? `https://thfncstr.vercel.app/api/image/${mintedTokenId}`}
+                      src={mintedImageUrl ?? `https://thfncstr.vercel.app/api/image/${mintedAssetId || mintedTokenId}`}
                       alt="Your Funcaster NFT"
                       className="w-full h-full object-cover"
                     />
